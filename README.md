@@ -1,3 +1,2 @@
 # WebXMLParse
-Get HTML and XML page Info parse.
 Parse HTML and XML, get channel version,Update time,icon...
