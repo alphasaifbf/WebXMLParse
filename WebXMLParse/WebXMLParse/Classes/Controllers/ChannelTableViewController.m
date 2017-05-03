@@ -19,6 +19,10 @@
 @property (nonatomic, strong) AFHTTPSessionManager *sessionManager;
 @property (nonatomic, strong) ChannelModel *samsungChannelModel;
 @property (nonatomic, copy) NSString *cur_elementName;
+@property (nonatomic, assign) BOOL canSetSamsungChannelIconUrl;
+@property (nonatomic, strong) NSArray *updateChannelArr;
+@property (nonatomic, strong) NSXMLParser *samsungIconParser;
+@property (nonatomic, strong) NSXMLParser *samsungInfoParser;
 
 @end
 
@@ -27,10 +31,17 @@
 - (void)didReceiveMemoryWarning {
     [super didReceiveMemoryWarning];
     // Dispose of any resources that can be recreated.
+    
+//    /html/body/div[5]/div[2]/ul/li/a
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    
+    self.canSetSamsungChannelIconUrl = NO;
+    
+    // update数据，有几个渠道，发布之后，都会有新的页面rul（如：联想，百度助手）
+    [self updateData];
     
     // read channelinfo.plist
     NSString *plistPath = [[NSBundle mainBundle] pathForResource:@"channelInfo" ofType:@"plist"];
@@ -46,18 +57,102 @@
     }
     self.channelArr = channelArr;
     
-    // test
+//    // test
 //    ChannelModel *channelModel = [ChannelModel new];
-//    channelModel.channelUrl = @"http://store.oppomobile.com/product/0010/881/208_1.html?from=1152_1";
-//    channelModel.channelName = @"oppo";
-//    channelModel.channelIconXPath = @"//*[@id=\"currentNews\"]/li[1]/img";
-//    channelModel.channelVersionXPath = @"//*[@id=\"detailinfo\"]/ul[3]/li[1]";
-//    channelModel.channelUpdateTimeXPath = @"//*[@id=\"detailinfo\"]/ul[2]/li";
-//    self.channelArr = @[[self.channelArr objectAtIndex:16]];
-    // test
+//    channelModel.channelUrl = @"http://www.lenovomm.com/search/index.html?q=%E8%8A%B1%E6%B5%B7%E4%BB%93";
+//    channelModel.channelName = @"联想";
+//    channelModel.channelIconXPath = @"/html/body/div[4]/div[2]/ul/li/a";
+//    channelModel.channelIconXPathAttributeKey = @"href";
+////    channelModel.channelVersionXPath = @"//*[@id=\"detailinfo\"]/ul[3]/li[1]";
+////    channelModel.channelUpdateTimeXPath = @"//*[@id=\"detailinfo\"]/ul[2]/li";
+////    self.channelArr = @[[self.channelArr objectAtIndex:16]];
+//    self.channelArr = @[channelModel];
+//    // test
+//    
+//    [self getAllHtmLDataAndParse];
+    
+    
+}
+
+- (void)updateData {
+    // 联想乐商店
+    ChannelModel *lenovoChannelModel = [ChannelModel new];
+    lenovoChannelModel.channelUrl = @"http://www.lenovomm.com/search/index.html?q=%E8%8A%B1%E6%B5%B7%E4%BB%93";
+    lenovoChannelModel.channelName = @"联想乐商店";
+    lenovoChannelModel.channelUpdateUrlXPath = @"/html/body/div[4]/div[2]/ul/li/a";
+    lenovoChannelModel.channelUpdateUrlXPathAttributeKey = @"href";
+    
+    // 百度助手
+    ChannelModel *baiduChannelModel = [ChannelModel new];
+    baiduChannelModel.channelUrl = @"http://shouji.baidu.com/s?wd=%E8%8A%B1%E6%B5%B7%E4%BB%93&data_type=app&f=header_all%40input";
+    baiduChannelModel.channelName = @"百度手机助手";
+    baiduChannelModel.channelUpdateUrlXPath = @"//*[@id=\"doc\"]/div[2]/div/div/ul/li[1]/div/div[1]/a";
+    baiduChannelModel.channelUpdateUrlXPathAttributeKey = @"href";
+    
+    self.updateChannelArr = @[lenovoChannelModel,baiduChannelModel];
+    __block int sum = 0;
+    for (int i = 0; i < self.updateChannelArr.count; i++) {
+        ChannelModel *channelModel = [self.updateChannelArr objectAtIndex:i];
+        __weak ChannelModel *weakChannelModel = channelModel;
+        __weak typeof(self) weakSelf = self;
+        [self.sessionManager GET:channelModel.channelUrl
+                      parameters:nil
+                        progress:nil
+                         success:^(NSURLSessionDataTask * _Nonnull task, id  _Nullable responseObject) {
+                             
+                             NSError *error;
+                             ONOXMLDocument *document = [ONOXMLDocument HTMLDocumentWithData:responseObject error:&error];
+                             // updateUrl
+                             if (weakChannelModel.channelUpdateUrlXPath.length > 0) {
+                                 ONOXMLElement *postsParentElement= [document firstChildWithXPath:weakChannelModel.channelUpdateUrlXPath];
+                                 NSLog(@"updateUrl postsParentElement is :%@",postsParentElement);
+                                 
+                                 // attribute get value
+                                 if (weakChannelModel.channelUpdateUrlXPathAttributeKey.length > 0) {
+                                     NSDictionary *dic = postsParentElement.attributes;
+                                     weakChannelModel.channelUpdateUrl =
+                                     [dic objectForKey:weakChannelModel.channelUpdateUrlXPathAttributeKey];
+                                 }else {
+                                     if (postsParentElement.stringValue.length > 0) {
+                                         weakChannelModel.channelUpdateUrl = postsParentElement.stringValue;
+                                     }
+                                 }
+                             }
+                             
+                             // http prefix
+                             if (weakChannelModel.channelUpdateUrl.length > 0 && [weakChannelModel.channelUpdateUrl rangeOfString:@"http"].location == NSNotFound) {
+                                 NSURL *url = [NSURL URLWithString:weakChannelModel.channelUrl];
+                                 weakChannelModel.channelUpdateUrl = [NSString stringWithFormat:@"%@://%@%@",
+                                                                      url.scheme,
+                                                                      url.host,
+                                                                      weakChannelModel.channelUpdateUrl];
+                             }
+                             sum++;
+                             if (sum == weakSelf.updateChannelArr.count) {
+                                 [weakSelf getUpdateChannelInfo];
+                             }
+                         } failure:^(NSURLSessionDataTask * _Nullable task, NSError * _Nonnull error) {
+                             NSLog(@"error is : %@",error);
+                         }];
+    }
+}
+
+- (void)getUpdateChannelInfo {
+    // 更新数据
+    for (int i = 0; i < self.updateChannelArr.count; i++) {
+        ChannelModel *updateChannelModel = [self.updateChannelArr objectAtIndex:i];
+        for (int j = 0; j < self.channelArr.count; j++) {
+            ChannelModel *channelModel = [self.channelArr objectAtIndex:j];
+            if ([updateChannelModel.channelName isEqualToString:channelModel.channelName]) {
+                if (![updateChannelModel.channelUpdateUrl isEqualToString:channelModel.channelUrl]) {
+                    // 需要更新
+                    channelModel.channelUrl = updateChannelModel.channelUpdateUrl;
+                }
+            }
+        }
+    }
     
     [self getAllHtmLDataAndParse];
-    
 }
 
 - (void)getAllHtmLDataAndParse {
@@ -65,6 +160,9 @@
         ChannelModel *channelModel = [self.channelArr objectAtIndex:i];
         // samsung post XML and parse XML
         if ([channelModel.channelName isEqualToString:@"三星"]) {
+            // 通过搜索接口获取icon数据
+            [self updateSamsungIconUrl:channelModel];
+            // 通过主页获取version和update time数据
             [self samsungXMLParser:channelModel];
         }else {
             __weak ChannelModel *weakChannelModel = channelModel;
@@ -77,7 +175,7 @@
                                  NSError *error;
                                  ONOXMLDocument *document = [ONOXMLDocument HTMLDocumentWithData:responseObject error:&error];
                                  
-                                 [document XPath:weakChannelModel.channelIconXPath];
+//                                 [document XPath:weakChannelModel.channelIconXPath];
                                  
                                  // icon
                                  if (weakChannelModel.channelIconXPath.length > 0) {
@@ -175,6 +273,55 @@
     return [formatter stringFromDate:date];
 }
 
+// update samsung icon url data
+- (void)updateSamsungIconUrl:(ChannelModel *)channelModel {
+    self.samsungChannelModel = channelModel;
+    NSMutableURLRequest *request = [[NSMutableURLRequest alloc] init];
+    [request setURL:[NSURL URLWithString:channelModel.channelUrl]];
+    // POST mothod
+    [request setHTTPMethod:@"POST"];
+    // set headers
+    NSString *contentType = [NSString stringWithFormat:@"text/xml"];
+    // set Content-Type
+    [request addValue:contentType forHTTPHeaderField: @"Content-Type"];
+    
+    // create the body
+    NSMutableData *postBody = [NSMutableData data];
+    [postBody appendData:[[NSString stringWithFormat:@"<SamsungProtocol networkType=\"0\" version2=\"3\" lang=\"EN\" openApiVersion=\"23\" deviceModel=\"SM-G9006W\" mcc=\"460\" mnc=\"00\" csc=\"CHU\" sdlVersion=\"2301\" odcVersion=\"4.2.10-11\" version=\"5.5\" filter=\"1\">"] dataUsingEncoding:NSUTF8StringEncoding]];
+    
+    // app detail
+    [postBody appendData:[[NSString stringWithFormat:@"<request name=\"searchProductListEx2Notc\" id=\"2040\" numParam=\"11\" transactionId=\"32c1d224102\">"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"srchClickURL\" />"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"startNum\">1</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"imgHeight\">135</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"qlInputMethod\">ac</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"imgWidth\">135</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"endNum\">30</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"keyword\">&#33457;&#28023;&#20179;</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"contentType\">all</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"qlDomainCode\">sa</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"qlDeviceType\">phone</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"<param name=\"alignOrder\">bestMatch</param>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    [postBody appendData:[[NSString stringWithFormat:@"</request></SamsungProtocol>"] dataUsingEncoding:NSUTF8StringEncoding]];
+    
+    [request setHTTPBody:postBody];
+    
+    NSString *bodyStr = [[NSString alloc] initWithData:postBody  encoding:NSUTF8StringEncoding];
+    NSLog(@"bodyStr: %@ ",bodyStr);
+    
+    //get response
+    NSURLSession *session = [NSURLSession sharedSession];
+    __weak typeof(self) weakSelf = self;
+    NSURLSessionDataTask *dataTask = [session dataTaskWithRequest:request
+                                                completionHandler:
+                                      ^(NSData *data, NSURLResponse *response, NSError *error) {
+                                          weakSelf.samsungIconParser = [[NSXMLParser alloc] initWithData:data];
+                                          [weakSelf.samsungIconParser setDelegate:weakSelf];
+                                          [weakSelf.samsungIconParser parse];
+                                      }];
+    [dataTask resume];
+}
+
 // samsung channel parser
 - (void)samsungXMLParser:(ChannelModel *)channelModel {
     self.samsungChannelModel = channelModel;
@@ -209,16 +356,11 @@
     NSURLSessionDataTask *dataTask = [session dataTaskWithRequest:request
                                                 completionHandler:
                                       ^(NSData *data, NSURLResponse *response, NSError *error) {
-                                          [weakSelf XMLParserWithData:data];
+                                          weakSelf.samsungInfoParser = [[NSXMLParser alloc] initWithData:data];
+                                          [weakSelf.samsungInfoParser setDelegate:weakSelf];
+                                          [weakSelf.samsungInfoParser parse];
                                       }];
     [dataTask resume];
-}
-
-// parse XML
--(void)XMLParserWithData:(NSData *)data{
-    NSXMLParser *XMLParser = [[NSXMLParser alloc] initWithData:data];
-    [XMLParser setDelegate:self];
-    [XMLParser parse];
 }
 
 #pragma mark - NSXMLParserDelegate
@@ -230,7 +372,10 @@
     NSLog(@"didStartElement :elementName:%@,namespaceURI:%@,qualifiedName:%@,attributeDict:%@",
           elementName,namespaceURI,qName,attributeDict);
     NSString *name = [attributeDict objectForKey:@"name"];
-    if ([name isEqualToString:@"version"] || [name isEqualToString:@"lastUpdateDate"]) {
+    if ([name isEqualToString:@"version"] ||
+        [name isEqualToString:@"lastUpdateDate"] ||
+        [name isEqualToString:@"productID"] ||
+        [name isEqualToString:@"productImgUrl"]) {
         self.cur_elementName = name;
     }else {
         self.cur_elementName = nil;
@@ -239,12 +384,31 @@
 
 - (void)parser:(NSXMLParser *)parser foundCharacters:(NSString *)string {
     NSLog(@"Characters :%@",string);
-    if ([self.cur_elementName isEqualToString:@"version"]) {
-        self.samsungChannelModel.channelVerison = string;
-        [self refreshWithChannel:self.samsungChannelModel];
-    }else if ([self.cur_elementName isEqualToString:@"lastUpdateDate"]) {
-        self.samsungChannelModel.channelUpdateTime = string;
-        [self refreshWithChannel:self.samsungChannelModel];
+    
+    // 解析 channel icon
+    if (self.samsungIconParser == parser) {
+        if ([self.cur_elementName isEqualToString:@"productID"]) {
+            if ([string isEqualToString:self.samsungChannelModel.productID]) {
+                self.canSetSamsungChannelIconUrl = YES;
+            }
+        }else if ([self.cur_elementName isEqualToString:@"productImgUrl"]) {
+            if (self.canSetSamsungChannelIconUrl) {
+                self.samsungChannelModel.channelIcon = string;
+                self.canSetSamsungChannelIconUrl = NO;
+                [self refreshWithChannel:self.samsungChannelModel];
+            }
+        }
+    }
+    
+    // 解析 channel info
+    if (self.samsungInfoParser == parser) {
+        if ([self.cur_elementName isEqualToString:@"version"]) {
+            self.samsungChannelModel.channelVerison = string;
+            [self refreshWithChannel:self.samsungChannelModel];
+        }else if ([self.cur_elementName isEqualToString:@"lastUpdateDate"]) {
+            self.samsungChannelModel.channelUpdateTime = string;
+            [self refreshWithChannel:self.samsungChannelModel];
+        }
     }
 }
 

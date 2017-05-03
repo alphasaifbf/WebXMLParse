@@ -26,4 +26,12 @@
 @property (nonatomic, copy) NSString *channelVerison;
 @property (nonatomic, copy) NSString *channelUpdateTime;
 
+// 更新的
+@property (nonatomic, copy) NSString *channelUpdateUrl;
+@property (nonatomic, copy) NSString *channelUpdateUrlXPath;
+@property (nonatomic, copy) NSString *channelUpdateUrlXPathAttributeKey;
+
+// samsung 特有的
+@property (nonatomic, copy) NSString *productID;
+
 @end

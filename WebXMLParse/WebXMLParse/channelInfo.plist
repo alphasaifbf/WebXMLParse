@@ -131,6 +131,8 @@
 			<string></string>
 			<key>channelUpdateTimeXPath</key>
 			<string></string>
+			<key>productID</key>
+			<string>000001214151</string>
 		</dict>
 		<dict>
 			<key>channelUrl</key>
@@ -155,18 +157,6 @@
 			<string>//*[@id=&quot;theme_content&quot;]/div[1]/div[1]/ul/li[4]/div</string>
 			<key>channelUpdateTimeXPath</key>
 			<string>//*[@id=&quot;theme_content&quot;]/div[1]/div[1]/ul/li[7]/div</string>
-		</dict>
-		<dict>
-			<key>channelUrl</key>
-			<string>http://mm.10086.cn/android/info/300009294184.html?from=www&amp;stag=cT0lRTglOEElQjElRTYlQjUlQjclRTQlQkIlOTMmcD0xJnQ9JUU1JTg1JUE4JUU5JTgzJUE4JnNuPTEmYWN0aXZlPTE%3D</string>
-			<key>channelName</key>
-			<string>移动MM（中国移动）</string>
-			<key>channelIconXPath</key>
-			<string>//*[@id=&quot;appicon&quot;]</string>
-			<key>channelVersionXPath</key>
-			<string>/html/body/div[2]/div[2]/div[2]/ul/li[3]</string>
-			<key>channelUpdateTimeXPath</key>
-			<string>/html/body/div[2]/div[2]/div[2]/ul/li[7]</string>
 		</dict>
 		<dict>
 			<key>channelUrl</key>
